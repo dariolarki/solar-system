@@ -1,3 +1,24 @@
+# ✅ Implemented — The Solar System (interactive orrery)
+
+This design has been built as a standalone static site (vanilla HTML/CSS/JS + Three.js).
+
+**Run it:** open `index.html` in any modern browser — no build step, no server required.
+(Optionally serve it, e.g. `python3 -m http.server`, then visit the page.)
+
+**Layout:**
+- `index.html` — page structure (header, legend, controls, info panel, ticker, canvas mounts)
+- `styles.css` — all chrome styling, ported 1:1 from the prototype
+- `src/data.js` — the 12 bodies (Sun → Pluto, Moon, asteroid belt) with miles/°F stats + blurbs
+- `src/facts.js` — the rotating quote/fact pool
+- `src/ui.js` — state + DOM rendering for legend, play/pause, speed, panel, ticker
+- `src/scene.js` — the full Three.js scene (textures, orbits, atmospheres, bloom, shadows, stars, etc.)
+- `src/main.js` — boot wiring
+- `vendor/three/` — Three.js r128 + post-processing addons, vendored locally (no CDN)
+
+The original design bundle is preserved untouched under `project/` and `chats/`.
+
+---
+
 # CODING AGENTS: READ THIS FIRST
 
 This is a **handoff bundle** from Claude Design (claude.ai/design).

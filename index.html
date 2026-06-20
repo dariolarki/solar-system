@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Solar System — Interactive Orrery</title>
+  <meta name="description" content="An interactive 3D model of the solar system: drag to orbit, scroll to zoom, click a world.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="sol-root">
+    <!-- WebGL canvas mount -->
+    <div id="mount" class="sol-mount"></div>
+    <!-- DOM labels overlay -->
+    <div id="labels" class="sol-labels"></div>
+    <!-- vignette + film grain -->
+    <div class="sol-vignette"></div>
+    <div class="sol-grain"></div>
+
+    <!-- rotating quotes / facts ticker -->
+    <div id="ticker" class="sol-ticker"></div>
+
+    <!-- title / header -->
+    <header class="sol-header">
+      <div class="sol-eyebrow">◦&nbsp;&nbsp;INTERACTIVE ORRERY</div>
+      <h1 class="sol-title">The Solar System</h1>
+      <div class="sol-subtitle">drag to orbit&nbsp;·&nbsp;scroll to zoom&nbsp;·&nbsp;click a world</div>
+    </header>
+
+    <!-- legend / bodies index -->
+    <nav id="legend" class="sol-legend" aria-label="Bodies">
+      <div class="sol-legend-head">BODIES</div>
+      <div id="legend-list"></div>
+    </nav>
+
+    <!-- playback + speed controls -->
+    <div class="sol-controls">
+      <button id="play-btn" class="sol-btn" type="button">
+        <span id="play-glyph" class="sol-glyph">❚❚</span><span id="play-label">PAUSE</span>
+      </button>
+      <div class="sol-divider"></div>
+      <div class="sol-speed-label">SPEED</div>
+      <div id="speed-list" class="sol-speed-list"></div>
+      <div class="sol-divider"></div>
+      <button id="reset-btn" class="sol-btn sol-btn-reset" type="button">RESET</button>
+    </div>
+
+    <!-- side info panel -->
+    <aside id="panel" class="sol-panel sol-scroll" hidden>
+      <button id="panel-close" class="sol-panel-close" type="button" aria-label="Close">✕</button>
+      <div id="panel-accent" class="sol-panel-accent"></div>
+      <div id="panel-type" class="sol-panel-type"></div>
+      <h2 id="panel-name" class="sol-panel-name"></h2>
+      <div id="panel-tagline" class="sol-panel-tagline"></div>
+      <p id="panel-blurb" class="sol-panel-blurb"></p>
+      <div id="panel-stats" class="sol-panel-stats"></div>
+    </aside>
+
+    <!-- loading overlay -->
+    <div id="loading" class="sol-loading">
+      <div class="sol-loading-text">ASSEMBLING THE COSMOS</div>
+    </div>
+  </div>
+
+  <!-- vendored Three.js r128 + post-processing addons (global THREE namespace) -->
+  <script src="./vendor/three/three.min.js"></script>
+  <script src="./vendor/three/CopyShader.js"></script>
+  <script src="./vendor/three/LuminosityHighPassShader.js"></script>
+  <script src="./vendor/three/EffectComposer.js"></script>
+  <script src="./vendor/three/RenderPass.js"></script>
+  <script src="./vendor/three/ShaderPass.js"></script>
+  <script src="./vendor/three/UnrealBloomPass.js"></script>
+
+  <!-- app -->
+  <script src="./src/data.js"></script>
+  <script src="./src/facts.js"></script>
+  <script src="./src/ui.js"></script>
+  <script src="./src/scene.js"></script>
+  <script src="./src/main.js"></script>
+</body>
+</html>
