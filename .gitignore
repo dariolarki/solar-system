@@ -1,0 +1,8 @@
+# Vercel
+.vercel
+
+# macOS
+.DS_Store
+
+# Dependencies (none committed; vendored libs live in vendor/)
+node_modules
