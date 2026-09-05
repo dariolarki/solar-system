@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://solar-system-cyan-gamma.vercel.app/sitemap.xml
