@@ -191,7 +191,7 @@ window.SolarScene = (function () {
       const blobs = [['80,120,180', 300, 260, 260], ['150,90,170', 1500, 640, 320], ['70,150,150', 1150, 300, 240], ['120,110,180', 600, 760, 300]];
       blobs.forEach(b => { const rg = x.createRadialGradient(b[1], b[2], 0, b[1], b[2], b[3]); rg.addColorStop(0, 'rgba(' + b[0] + ',0.18)'); rg.addColorStop(1, 'rgba(' + b[0] + ',0)'); x.fillStyle = rg; x.fillRect(0, 0, 2048, 1024); });
       // stars
-      for (let i = 0; i < 2600; i++) { const s = R(); x.globalAlpha = 0.25 + R() * 0.75; x.fillStyle = s > 0.94 ? '#bcd0ff' : (s > 0.88 ? '#ffe6c0' : '#ffffff'); const r = R() < 0.92 ? 0.6 + R() * 0.9 : 1.4 + R() * 1.4; x.beginPath(); x.arc(R() * 2048, R() * 1024, r, 0, 7); x.fill(); }
+      for (let i = 0; i < 2600; i++) { const s = R(); x.globalAlpha = 0.25 + R() * 0.75; x.fillStyle = s > 0.94 ? '#bcd0ff' : (s > 0.88 ? '#ffe6c0' : '#ffffff'); const r = R() < 0.96 ? 0.35 + R() * 0.45 : 0.8 + R() * 0.5; /* texture is magnified ~2x on screen, so keep these tiny */ x.beginPath(); x.arc(R() * 2048, R() * 1024, r, 0, 7); x.fill(); }
       x.globalAlpha = 1;
       const tx = new THREE.CanvasTexture(c); tx.mapping = THREE.EquirectangularReflectionMapping;
       const sky = new THREE.Mesh(new THREE.SphereGeometry(2600, 48, 48), new THREE.MeshBasicMaterial({ map: tx, side: THREE.BackSide }));
@@ -199,7 +199,9 @@ window.SolarScene = (function () {
     })();
 
     // foreground stars — layered parallax + per-star twinkle
-    const starU = { time: { value: 0 } };
+    // point size is clamped in CSS pixels (uPR converts to device px) so stars
+    // near the camera stay pin-sharp instead of ballooning into soft discs
+    const starU = { time: { value: 0 }, uPR: { value: renderer.getPixelRatio() } };
     const starGroup = new THREE.Group(); scene.add(starGroup);
     const twinkleLayer = (count, rMin, rMax, szMin, szMax, op) => {
       const pos = new Float32Array(count * 3), ph = new Float32Array(count), sz = new Float32Array(count);
@@ -213,9 +215,9 @@ window.SolarScene = (function () {
       g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
       g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
       const m = new THREE.ShaderMaterial({
-        uniforms: { time: starU.time, uOpacity: { value: op } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-        vertexShader: 'attribute float aPhase; attribute float aSize; uniform float time; varying float vT; void main(){ vT=0.4+0.6*abs(sin(time*0.7+aPhase)); vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=aSize*(280.0/-mv.z); gl_Position=projectionMatrix*mv; }',
-        fragmentShader: 'uniform float uOpacity; varying float vT; void main(){ vec2 d=gl_PointCoord-0.5; float r=length(d); if(r>0.5) discard; float a=(1.0-r*2.0)*vT*uOpacity; gl_FragColor=vec4(1.0,1.0,1.0,a); }'
+        uniforms: { time: starU.time, uPR: starU.uPR, uOpacity: { value: op } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        vertexShader: 'attribute float aPhase; attribute float aSize; uniform float time; uniform float uPR; varying float vT; void main(){ vT=0.4+0.6*abs(sin(time*0.7+aPhase)); vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=clamp(aSize*(280.0/-mv.z),0.8,2.2)*uPR; gl_Position=projectionMatrix*mv; }',
+        fragmentShader: 'uniform float uOpacity; varying float vT; void main(){ vec2 d=gl_PointCoord-0.5; float r=length(d); if(r>0.5) discard; float a=smoothstep(0.5,0.12,r)*vT*uOpacity; gl_FragColor=vec4(1.0,1.0,1.0,a); }'
       });
       starGroup.add(new THREE.Points(g, m));
     };
@@ -268,7 +270,8 @@ window.SolarScene = (function () {
         const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
         sp.scale.set(d.radius * 5.4, d.radius * 5.4, 1); scene.add(sp);
         orbiters.push({ pivot: null, holder: mesh, mesh, orbit: 0, spin: 0.06 });
-        labelInfo.push({ key: 'sun', obj: mesh, el: null });
+        const sunTop = new THREE.Object3D(); sunTop.position.y = d.radius * 1.1; scene.add(sunTop); // label sits above the disc, not on it
+        labelInfo.push({ key: 'sun', obj: sunTop, el: null });
         return;
       }
       const pivot = new THREE.Object3D(); pivot.rotation.y = R() * Math.PI * 2; scene.add(pivot);
@@ -343,7 +346,39 @@ window.SolarScene = (function () {
       el.innerHTML = '<span class="d" style="color:' + d.color + '"></span><span>' + d.name + '</span><span class="t"></span>';
       el.addEventListener('click', (e) => { e.stopPropagation(); UI.select(li.key); });
       labelsEl.appendChild(el); li.el = el;
+      // declutter priority: when two labels collide, the bigger body wins
+      li.pri = d.sun ? 100 : d.belt ? 0.5 : d.moonOf ? 0.2 : d.radius;
+      li.shown = true;
     });
+    const labelOrder = labelInfo.slice().sort((a, b) => b.pri - a.pri);
+    const measureLabels = () => labelInfo.forEach(li => { li.w = li.el.offsetWidth; li.h = li.el.offsetHeight; });
+    measureLabels();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(measureLabels);
+
+    // ---------- UI chrome geometry ----------
+    // Rects of the overlay panels (labels hide beneath them) and the camera's
+    // view offset, which keeps the focused body centred in the space the info
+    // panel leaves free: shifted left on desktop, up on the mobile bottom sheet.
+    const narrowMQ = window.matchMedia('(max-width: 720px)');
+    const panelEl = document.getElementById('panel');
+    const chromeEls = ['.sol-header', '#legend', '.sol-controls', '#panel'].map(s => document.querySelector(s)).filter(Boolean);
+    let chromeRects = [];
+    const viewOff = { x: 0, y: 0, tx: 0, ty: 0 };
+    const measureChrome = () => {
+      chromeRects = [];
+      chromeEls.forEach(n => {
+        if (n.hidden || getComputedStyle(n).opacity === '0') return;
+        const r = n.getBoundingClientRect();
+        if (r.width && r.height) chromeRects.push(r);
+      });
+      const open = panelEl && !panelEl.hidden;
+      viewOff.tx = open && !narrowMQ.matches ? panelEl.offsetWidth / 2 : 0;
+      viewOff.ty = open && narrowMQ.matches ? panelEl.offsetHeight / 2 : 0;
+    };
+    let chromeDirty = true;
+    // re-measure after layout transitions (legend fade, controls slide) settle
+    const markChrome = (e) => { if (!labelsEl.contains(e.target)) chromeDirty = true; };
+    ['transitionend', 'animationend'].forEach(t => document.querySelector('.sol-root').addEventListener(t, markChrome));
 
     // ---------- hover highlight ----------
     const hoverRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.0, 56), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
@@ -351,21 +386,48 @@ window.SolarScene = (function () {
     const rc = new THREE.Raycaster();
 
     // ---------- camera controls (spherical around target) ----------
-    const C = { theta: 0.42, phi: 0.62, radius: 470, tTheta: 0.72, tPhi: 1.04, tRadius: 200, defR: 200 };
+    // portrait screens need to sit further back to fit the inner system across
+    const fitRadius = () => 200 * Math.max(1, Math.min(2.1, 0.9 / (W / H)));
+    const C = { theta: 0.42, phi: 0.62, radius: 470, tTheta: 0.72, tPhi: 1.04, tRadius: 200, defR: 200, maxR: 420 };
+    C.defR = C.tRadius = fitRadius(); C.maxR = Math.max(420, C.defR * 1.4); C.radius = Math.max(470, C.defR * 1.6);
+    const zoomBy = (f) => { C.tRadius = Math.max(11, Math.min(C.maxR, C.tRadius * f)); };
     const target = new THREE.Vector3(0, 0, 0), tTarget = new THREE.Vector3(0, 0, 0);
     const dom = renderer.domElement;
     let down = false, moved = false, px = 0, py = 0;
     let dragging = false, hasHover = false, hx = 0, hy = 0;
 
-    dom.addEventListener('pointerdown', (e) => { down = true; moved = false; px = e.clientX; py = e.clientY; dragging = true; dom.style.cursor = 'grabbing'; });
+    // active pointers: one drags to orbit, two pinch to zoom
+    const pointers = new Map();
+    let pinchSpan = 0;
+    const span = () => { const [a, b] = pointers.values(); return Math.hypot(a.x - b.x, a.y - b.y); };
+
+    dom.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) { down = true; moved = false; px = e.clientX; py = e.clientY; dragging = true; dom.style.cursor = 'grabbing'; }
+      else if (pointers.size === 2) { moved = true; pinchSpan = span(); }
+    });
     window.addEventListener('pointermove', (e) => {
-      if (!down) return; const dx = e.clientX - px, dy = e.clientY - py; px = e.clientX; py = e.clientY;
-      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX; p.y = e.clientY;
+      if (!down) return;
+      if (pointers.size >= 2) {
+        const s = span();
+        if (pinchSpan > 0 && s > 0) zoomBy(pinchSpan / s);
+        pinchSpan = s;
+        return;
+      }
+      const dx = e.clientX - px, dy = e.clientY - py; px = e.clientX; py = e.clientY;
+      if (Math.abs(dx) + Math.abs(dy) > (e.pointerType === 'touch' ? 8 : 4)) moved = true;
       C.tTheta -= dx * 0.005; C.tPhi -= dy * 0.005;
       C.tPhi = Math.max(0.12, Math.min(Math.PI - 0.12, C.tPhi));
     });
-    window.addEventListener('pointerup', (e) => {
-      if (down && !moved) {
+    const endPointer = (e) => {
+      if (!pointers.delete(e.pointerId)) return;
+      // lifting one finger of a pinch hands the drag to the remaining finger
+      if (pointers.size === 1) { const [p] = pointers.values(); px = p.x; py = p.y; return; }
+      if (pointers.size) return;
+      if (e.type === 'pointerup' && down && !moved) {
         const r = dom.getBoundingClientRect();
         const ray = new THREE.Raycaster();
         ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
@@ -374,9 +436,11 @@ window.SolarScene = (function () {
         else { UI.closePanel(); }
       }
       down = false; dragging = false; dom.style.cursor = 'grab';
-    });
-    dom.addEventListener('wheel', (e) => { e.preventDefault(); C.tRadius = Math.max(11, Math.min(420, C.tRadius * (1 + e.deltaY * 0.0011))); }, { passive: false });
-    dom.addEventListener('pointermove', (e) => { const r = dom.getBoundingClientRect(); hx = ((e.clientX - r.left) / r.width) * 2 - 1; hy = -((e.clientY - r.top) / r.height) * 2 + 1; hasHover = true; });
+    };
+    window.addEventListener('pointerup', endPointer);
+    window.addEventListener('pointercancel', endPointer);
+    dom.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(1 + e.deltaY * 0.0011); }, { passive: false });
+    dom.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') return; const r = dom.getBoundingClientRect(); hx = ((e.clientX - r.left) / r.width) * 2 - 1; hy = -((e.clientY - r.top) / r.height) * 2 + 1; hasHover = true; });
     dom.addEventListener('pointerleave', () => { hasHover = false; hoverRing.visible = false; });
 
     // ---------- shooting stars ----------
@@ -392,7 +456,17 @@ window.SolarScene = (function () {
     setTimeout(spawnMeteor, 2600);
 
     // ---------- resize ----------
-    const onResize = () => { W = mount.clientWidth || window.innerWidth; H = mount.clientHeight || window.innerHeight; camera.aspect = W / H; camera.updateProjectionMatrix(); renderer.setSize(W, H); if (composer) composer.setSize(W, H); if (bloom) bloom.setSize(W, H); };
+    const onResize = () => {
+      W = mount.clientWidth || window.innerWidth; H = mount.clientHeight || window.innerHeight;
+      camera.aspect = W / H; camera.updateProjectionMatrix(); renderer.setSize(W, H);
+      if (composer) composer.setSize(W, H); if (bloom) bloom.setSize(W, H);
+      starU.uPR.value = renderer.getPixelRatio();
+      // rotating a phone changes how far back the wide view needs to sit
+      const wasWide = !UI.state.selectedKey && Math.abs(C.tRadius - C.defR) < 1;
+      C.defR = fitRadius(); C.maxR = Math.max(420, C.defR * 1.4);
+      if (wasWide) C.tRadius = C.defR;
+      chromeDirty = true;
+    };
     window.addEventListener('resize', onResize);
 
     // ---------- animation loop ----------
@@ -422,13 +496,20 @@ window.SolarScene = (function () {
       if (UI.consumeReset()) { C.tTheta = 0.7; C.tPhi = 1.05; C.tRadius = C.defR; }
 
       // when leaving a planet, pull the camera back out to the wide view
-      if (sel !== lastSel) { if (!sel) { C.tRadius = C.defR; } lastSel = sel; }
+      if (sel !== lastSel) { if (!sel) { C.tRadius = C.defR; } lastSel = sel; chromeDirty = true; }
+      if (chromeDirty) { measureChrome(); chromeDirty = false; }
+
+      // slide the projection centre into the free space beside/above the panel
+      viewOff.x += (viewOff.tx - viewOff.x) * 0.1;
+      viewOff.y += (viewOff.ty - viewOff.y) * 0.1;
+      if (Math.abs(viewOff.x) + Math.abs(viewOff.y) > 0.25) camera.setViewOffset(W, H, viewOff.x, viewOff.y, W, H);
+      else if (camera.view && camera.view.enabled) camera.clearViewOffset();
 
       // focus target
       if (sel && focusMap[sel]) {
         focusMap[sel].getWorldPosition(tmp); tTarget.copy(tmp);
         const d = DATA.find(x => x.key === sel);
-        const fr = sel === 'sun' ? d.radius * 4 : Math.max(7, (d.radius || 1) * 7);
+        const fr = (sel === 'sun' ? d.radius * 4 : Math.max(7, (d.radius || 1) * 7)) * (C.defR / 200); // back off on portrait, like the wide view
         C.tRadius += (fr - C.tRadius) * 0.08;
       } else {
         tTarget.set(0, 0, 0);
@@ -460,16 +541,26 @@ window.SolarScene = (function () {
 
       if (composer) composer.render(); else renderer.render(scene, camera);
 
-      // labels
+      // labels — placed greedily in priority order; a label is hidden when it
+      // would overlap a higher-priority label or sit under a UI panel. The
+      // selected body's label is hidden too: the info panel already names it.
       if (PROPS.showLabels !== false) {
-        for (let i = 0; i < labelInfo.length; i++) {
-          const li = labelInfo[i]; li.obj.getWorldPosition(tmp); tmp.project(camera);
-          if (tmp.z < 1 && tmp.z > -1) {
+        const placed = [];
+        for (let i = 0; i < labelOrder.length; i++) {
+          const li = labelOrder[i]; li.obj.getWorldPosition(tmp); tmp.project(camera);
+          let show = false;
+          if (tmp.z < 1 && tmp.z > -1 && li.key !== sel) {
             const sx = (tmp.x * 0.5 + 0.5) * W, sy = (-tmp.y * 0.5 + 0.5) * H;
-            li.el.style.display = 'flex';
             li.el.style.transform = 'translate(' + sx + 'px,' + sy + 'px) translate(-50%,-150%)';
-            li.el.style.opacity = (sel && sel !== li.key) ? '0.4' : '1';
-          } else { li.el.style.display = 'none'; }
+            const pad = 4;
+            const box = { l: sx - li.w / 2 - pad, r: sx + li.w / 2 + pad, t: sy - li.h * 1.5 - pad, b: sy - li.h * 0.5 + pad };
+            const hit = (o) => box.l < o.r && box.r > o.l && box.t < o.b && box.b > o.t;
+            const hitChrome = (o) => box.l < o.right && box.r > o.left && box.t < o.bottom && box.b > o.top;
+            show = box.r > 0 && box.l < W && box.b > 0 && box.t < H && !placed.some(hit) && !chromeRects.some(hitChrome);
+            if (show) placed.push(box);
+          }
+          if (show !== li.shown) { li.el.classList.toggle('is-hidden', !show); li.shown = show; }
+          li.el.classList.toggle('is-dim', !!sel);
         }
       }
     };

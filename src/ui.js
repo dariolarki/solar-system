@@ -41,7 +41,12 @@ window.SolarUI = (function () {
 
   function updateLegendHighlight() {
     el.legendList.querySelectorAll('.sol-legend-item').forEach((btn) => {
-      btn.classList.toggle('is-selected', btn.dataset.key === state.selectedKey);
+      const on = btn.dataset.key === state.selectedKey;
+      btn.classList.toggle('is-selected', on);
+      // on phones the legend is a horizontal rail — keep the active chip in view
+      if (on && el.legendList.scrollWidth > el.legendList.clientWidth) {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
     });
   }
 
@@ -75,9 +80,10 @@ window.SolarUI = (function () {
   // ---------- info panel ----------
   function updatePanel() {
     const d = DATA.find((x) => x.key === state.selectedKey) || null;
+    el.root.classList.toggle('has-panel', !!d);
     if (!d) {
       el.panel.hidden = true;
-      el.ticker.style.display = 'block';
+      el.ticker.style.display = '';
       return;
     }
     el.panelAccent.style.background = d.color;
@@ -182,6 +188,7 @@ window.SolarUI = (function () {
   // ---------- init ----------
   function init() {
     el = {
+      root: document.querySelector('.sol-root'),
       legendList: document.getElementById('legend-list'),
       speedList: document.getElementById('speed-list'),
       playBtn: document.getElementById('play-btn'),
